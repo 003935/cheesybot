@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { createCapyClient } from "./capy/client";
+import { handlePing } from "./commands/ping";
 import { Conversations } from "./conversations";
 import { config } from "./config";
 import { stores } from "./state";
@@ -9,6 +10,10 @@ const conversations = new Conversations(client, createCapyClient(config.capyApiK
 
 client.on(Events.InteractionCreate, (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === "ping") {
+    void handlePing(interaction).catch((error: unknown) => console.error("Ping command failed", error));
+    return;
+  }
   const action = interaction.commandName === "capy" ? conversations.slash(interaction) :
     interaction.commandName === "capy-model" ? conversations.modelSetting(interaction) : undefined;
   void action?.catch((error: unknown) => console.error("Discord command failed", error));
