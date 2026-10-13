@@ -182,6 +182,14 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
 
 `!new` / `!web` forks, `project=` and channel→project mapping, live-updating PR cards (checks, diff totals, merge notices), attachments, DMs.
 
+## v1.3: access control
+
+- By default, only guild members with Manage Server can start tasks or affect linked conversations. A guild may additionally allow one role; Manage Server always retains access.
+- `/capy-access` requires Manage Server. `role:<role>` grants that role access, `reset:true` returns to Manage Server only, and no options shows the current policy. Reject using `role` and `reset` together. Responses are ephemeral.
+- Store the optional role ID per guild in `data/settings.json` alongside model defaults. Changing model defaults must preserve the access role and changing access must preserve model defaults; settings survive restarts.
+- Check access before creating a task from `/capy` or a bot mention, before forwarding any linked-thread reply (including directives), and before `stop`, `mute`, `unmute`, or `archive`. Unauthorized new tasks get an ephemeral slash response or a short mention reply explaining who can use Capy; unauthorized messages in linked threads are ignored silently.
+- Register `/capy-access`, document the policy in the README, and test admin, role, unauthorized, reset, and persistence paths with fake Discord objects.
+
 ## v1.5: `/capy-notify channel:<#channel>`
 
 - Requires Manage Server permission. Stores `guildId → channelId` in a small JSON file (`data/notify.json`).
