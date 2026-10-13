@@ -205,6 +205,9 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
   - Post any PR URL not seen before as a one-line message without an embed or link preview.
   - Keep a seen-URLs set in the same JSON file so restarts don't repost.
 - On the first poll after startup, record existing PRs as seen without posting them, so the bot doesn't flood the channel.
+- Only a Manage Server member may configure the feed; reject a channel that cannot accept messages. Replies are ephemeral and suppress mentions and previews. A configured channel must grant the bot permission to send messages.
+- Persist the initial-scan marker, per-thread update times and transcript cursors, and per-guild seen URLs atomically. A failed Capy request or Discord send must not advance that thread's checkpoint, so the next poll retries; successful sends must be marked seen before processing the next URL. A later guild configuration inherits previously discovered URLs to avoid backfilling old PRs.
+- Tests use fake fetch and Discord channels to cover the denied command, invalid channel, pagination, startup baseline, cross-entry-point PRs, deduplication after restart, and retry after a send failure.
 
 ## PR card actions
 
