@@ -22,6 +22,17 @@ test("creates a thread with the documented fields and pages through its transcri
   expect(requests[2]?.url).toContain("?after=cursor-1");
 });
 
+test("sends the configured model when creating a thread", async () => {
+  let body: unknown;
+  const fake: Fetch = async (_input, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json({ id: "t", status: "working" });
+  };
+  const client = createCapyClient("secret", "https://example.test/api/v1", fake);
+  await client.createThread({ requestId: "interaction", projectId: "project", message: "task", title: "task", modelId: "openai/gpt-6-sol" });
+  expect(body).toMatchObject({ model: { modelId: "openai/gpt-6-sol" } });
+});
+
 test("a clean done ends the watcher", async () => {
   const fake: Fetch = async () => sse("event: heartbeat\ndata: {}\n\nevent: done\ndata: {}\n\n");
   expect(await waitForRunEnd(createCapyClient("key", "https://example.test/api/v1", fake), "t", noop)).toBe("done");

@@ -27,11 +27,11 @@ export function createCapyClient(apiKey: string, baseUrl: string, request: Fetch
   }
 
   return {
-    async createThread(input: { requestId: string; projectId: string; message: string; title: string }): Promise<Thread> {
+    async createThread({ modelId, ...input }: { requestId: string; projectId: string; message: string; title: string; modelId?: string }): Promise<Thread> {
       const response = await call("/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...input, pullRequestAuthor: "capy" }),
+        body: JSON.stringify({ ...input, pullRequestAuthor: "capy", ...(modelId && { model: { modelId } }) }),
       });
       return response.json() as Promise<Thread>;
     },

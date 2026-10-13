@@ -15,5 +15,6 @@ export const config = {
   capyApiKey: required("CAPY_API_KEY"),
   capyProjectId: required("CAPY_PROJECT_ID"),
   capyBaseUrl: Bun.env.CAPY_BASE_URL?.trim() || "https://api.capy.ai/api/v1",
+  capyModel: Bun.env.CAPY_MODEL?.trim() || undefined,
   threadUrl,
 };

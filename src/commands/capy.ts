@@ -21,12 +21,14 @@ export async function handleCapy(interaction: ChatInputCommandInteraction, capy:
       projectId: settings.capyProjectId,
       message: task,
       title: task.slice(0, 80),
+      modelId: settings.capyModel,
     });
   } catch (error) {
     const message = error instanceof CapyError ? {
       "capy/Unauthorized": "Bot is misconfigured.",
       "capy/Forbidden": "Bot is misconfigured.",
       "capy/PaidFeatureUnavailable": "Plan limit reached.",
+      "ModelSelection.Rejected": "The configured Capy model is unavailable; check CAPY_MODEL.",
       "capy/RateLimited": `Busy, try again in ${error.retryAfterSeconds ?? 2}s.`,
     }[error.tag] : undefined;
     await interaction.editReply(message ?? "Could not start the Capy task. Please try again later.");
