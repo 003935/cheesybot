@@ -4,11 +4,17 @@ import { handlePing } from "./commands/ping";
 import { Conversations } from "./conversations";
 import { config } from "./config";
 import { stores } from "./state";
+import { createGitHubClient } from "./github/client";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-const conversations = new Conversations(client, createCapyClient(config.capyApiKey, config.capyBaseUrl), stores(), config);
+const conversations = new Conversations(client, createCapyClient(config.capyApiKey, config.capyBaseUrl), stores(), config,
+  config.githubToken ? createGitHubClient(config.githubToken) : undefined);
 
 client.on(Events.InteractionCreate, (interaction) => {
+  if (interaction.isButton()) {
+    void conversations.prAction(interaction).catch((error: unknown) => console.error("PR interaction failed", error));
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName === "ping") {
     void handlePing(interaction).catch((error: unknown) => console.error("Ping command failed", error));
