@@ -12,3 +12,10 @@ export const modelCommand = new SlashCommandBuilder()
   .addStringOption((option) => option.setName("model").setDescription("Full provider/model ID"))
   .addStringOption((option) => option.setName("effort").setDescription("Reasoning effort")
     .addChoices(...(["low", "medium", "high", "xhigh"] as const).map((name) => ({ name, value: name }))));
+
+export const accessCommand = new SlashCommandBuilder()
+  .setName("capy-access")
+  .setDescription("Set who can use Capy in this server")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addRoleOption((option) => option.setName("role").setDescription("Allow members with this role"))
+  .addBooleanOption((option) => option.setName("reset").setDescription("Return to Manage Server only"));

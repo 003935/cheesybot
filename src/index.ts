@@ -15,7 +15,8 @@ client.on(Events.InteractionCreate, (interaction) => {
     return;
   }
   const action = interaction.commandName === "capy" ? conversations.slash(interaction) :
-    interaction.commandName === "capy-model" ? conversations.modelSetting(interaction) : undefined;
+    interaction.commandName === "capy-model" ? conversations.modelSetting(interaction) :
+    interaction.commandName === "capy-access" ? conversations.accessSetting(interaction) : undefined;
   void action?.catch((error: unknown) => console.error("Discord command failed", error));
 });
 client.on(Events.MessageCreate, (message) => {

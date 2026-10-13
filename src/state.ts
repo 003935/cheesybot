@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type { ModelDefault } from "./directives";
 
 export type Link = { capyThreadId: string; guildId: string; muted: boolean; archived: boolean; postedPrs: string[]; lastTranscriptId?: string };
+export type GuildSettings = ModelDefault & { accessRoleId?: string };
 
 export function jsonStore<T>(path: string, initial: T): { data: T; save(): void } {
   let data = initial;
@@ -22,6 +23,6 @@ export function jsonStore<T>(path: string, initial: T): { data: T; save(): void 
 export function stores(directory = "data") {
   return {
     threads: jsonStore<Record<string, Link>>(`${directory}/threads.json`, {}),
-    settings: jsonStore<Record<string, ModelDefault>>(`${directory}/settings.json`, {}),
+    settings: jsonStore<Record<string, GuildSettings>>(`${directory}/settings.json`, {}),
   };
 }

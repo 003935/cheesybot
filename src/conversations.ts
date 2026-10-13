@@ -33,6 +33,19 @@ export class Conversations {
     return id ? text.replace(new RegExp(`<@!?${id}>`, "g"), "").trim() : text.trim();
   }
 
+  private allowed(guildId: string, permissions: { has(permission: bigint): boolean } | null | undefined,
+    roles: { cache: { has(id: string): boolean } } | readonly string[] | undefined): boolean {
+    if (permissions?.has(PermissionFlagsBits.ManageGuild)) return true;
+    const roleId = this.state.settings.data[guildId]?.accessRoleId;
+    return !!roleId && (Array.isArray(roles) ? roles.includes(roleId) :
+      !!roles && "cache" in roles && roles.cache.has(roleId));
+  }
+
+  private accessDescription(guildId: string): string {
+    const roleId = this.state.settings.data[guildId]?.accessRoleId;
+    return `Members with Manage Server${roleId ? ` or the <@&${roleId}> role` : ""} can use Capy.`;
+  }
+
   private async create(task: string, name: string, requestId: string, guildId: string,
     openThread: (title: string) => Promise<ThreadChannel>, report: (text: string) => Promise<unknown>): Promise<boolean> {
     let parsed;
@@ -86,6 +99,10 @@ export class Conversations {
       await this.reply(message);
       return;
     }
+    if (!this.allowed(message.guildId, message.member?.permissions, message.member?.roles)) {
+      await message.reply({ content: this.accessDescription(message.guildId), allowedMentions: mentions });
+      return;
+    }
     const task = this.stripMention(message.content);
     await this.create(task, this.name(message), message.id, message.guildId,
       (title) => message.startThread({ name: title }),
@@ -93,6 +110,11 @@ export class Conversations {
   }
 
   async slash(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (interaction.guildId && !this.allowed(interaction.guildId, interaction.memberPermissions,
+      interaction.member?.roles)) {
+      await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true });
+      return;
+    }
     await interaction.deferReply();
     if (!interaction.guildId || interaction.channel?.isThread()) {
       await interaction.editReply("Use /capy in a server text channel so I can open a thread.");
@@ -123,6 +145,7 @@ export class Conversations {
         const parsed = parseDirectives(`model=${model ?? current.modelId ?? this.settings.capyModel ?? ""}${effort ? ` reasoning=${effort}` : ""}`);
         if (!parsed.model) throw new Error("Choose a model first.");
         this.state.settings.data[interaction.guildId] = {
+          ...current,
           modelId: parsed.model.modelId,
           reasoningMode: effort ? parsed.model.reasoningMode : current.reasoningMode,
         };
@@ -136,10 +159,32 @@ export class Conversations {
     await interaction.reply({ content: `Model: ${selected.modelId ?? this.settings.capyModel ?? "default"}; effort: ${selected.reasoningMode ?? "default"}.`, ephemeral: true });
   }
 
+  async accessSetting(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true });
+      return;
+    }
+    const role = interaction.options.getRole("role");
+    const reset = interaction.options.getBoolean("reset");
+    if (role && reset) {
+      await interaction.reply({ content: "Choose a role or reset, not both.", ephemeral: true });
+      return;
+    }
+    if (role || reset) {
+      const current = this.state.settings.data[interaction.guildId] ?? {};
+      if (role) current.accessRoleId = role.id;
+      else delete current.accessRoleId;
+      this.state.settings.data[interaction.guildId] = current;
+      this.state.settings.save();
+    }
+    await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, allowedMentions: mentions });
+  }
+
   async reply(message: Message): Promise<void> {
     if (message.author.bot || !message.channel.isThread()) return;
     const link = this.state.threads.data[message.channel.id];
     if (!link || link.archived) return;
+    if (!this.allowed(link.guildId, message.member?.permissions, message.member?.roles)) return;
     const text = this.stripMention(message.content);
     if (/^aside(?:\s|$)/i.test(text)) return;
     const control = text.toLowerCase();

@@ -26,7 +26,7 @@ function fakeMessage(content: string, id = "message-1", mentioned = false) {
   const channel = { id: "discord-thread", isThread: () => true,
     send: async (value: unknown) => { sent.push(value); return { id: `bot-${sent.length}`, edit: async (edit: unknown) => { sent.push(edit); } }; },
     setArchived: async () => {}, setLocked: async () => {}, };
-  const message = { id, content, author: { bot: false, username: "Alice", globalName: null }, member: { displayName: "Alice" },
+  const message = { id, content, author: { bot: false, username: "Alice", globalName: null }, member: { displayName: "Alice", permissions: { has: () => true } },
     guildId: "guild", channel, attachments: { size: 0 }, mentions: { users: { has: () => mentioned } },
     react: async (emoji: string) => { reactions.push(emoji); },
     reply: async (value: unknown) => { sent.push(value); }, } as unknown as Message;
@@ -172,7 +172,7 @@ test("a server mention creates a linked Discord thread with the message ID as re
     const service = new Conversations(discord, capy, local.store, settings);
     service.startWatcher = async () => {};
     const message = { id: "discord-message", content: "<@bot> reasoning=low fix auth", guildId: "guild",
-      author: { bot: false, username: "Alice" }, member: { displayName: "Alice" },
+      author: { bot: false, username: "Alice" }, member: { displayName: "Alice", permissions: { has: () => true } },
       channel: { isThread: () => false }, mentions: { users: { has: () => true } },
       startThread: async (options: unknown) => { created.push(options); return channel; } } as unknown as Message;
     await service.mention(message);
@@ -190,7 +190,7 @@ test("Discord thread creation failure stops and archives the orphaned Capy run",
       interrupt: async () => { actions.push("interrupt"); }, archive: async () => { actions.push("archive"); } } as unknown as CapyClient;
     const service = new Conversations(discord, capy, local.store, settings);
     const replies: unknown[] = [];
-    const message = { id: "msg", content: "<@bot> task", guildId: "guild", author: { bot: false, username: "Alice" }, member: { displayName: "Alice" },
+    const message = { id: "msg", content: "<@bot> task", guildId: "guild", author: { bot: false, username: "Alice" }, member: { displayName: "Alice", permissions: { has: () => true } },
       channel: { isThread: () => false }, mentions: { users: { has: () => true } },
       startThread: async () => { throw new Error("Missing permissions"); }, reply: async (value: unknown) => { replies.push(value); } } as unknown as Message;
     const original = console.error;
