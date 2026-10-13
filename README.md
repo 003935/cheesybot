@@ -13,7 +13,9 @@ The v1 bot does not forward replies or provide a PR notification feed.
 3. Invite the bot to your server using `https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=134286336` (View Channel, Send Messages, Send Messages in Threads, and Read Message History). Replace the client ID placeholder. The bot also needs access to the channel where `/capy` is invoked.
 4. Run `bun run register` to register the global `/capy` slash command, then `bun start`. Global command propagation may take time.
 
-Run `bun run check` and `bun test` before pushing. Tests use fake HTTP responses and need no Discord or Capy credentials.
+## Running tests
+
+From the repository root, run `bun test` to execute the test suite with Bun's built-in test runner. The tests use fake HTTP responses, so they need no Discord or Capy credentials. Run `bun run check` to type-check the project before pushing.
 
 ## License
 
