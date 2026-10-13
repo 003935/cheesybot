@@ -14,5 +14,5 @@ test("/ping replies with the bot's Discord heartbeat latency", async () => {
   } as unknown as ChatInputCommandInteraction;
 
   await handlePing(interaction);
-  expect(reply).toBe("pong 🧀 (43ms)");
+  expect(reply).toBe("pong 🐱 (43ms)");
 });

@@ -3,7 +3,7 @@
 A Discord bot that sends coding tasks to [Capy](https://capy.ai) and posts the resulting pull requests back to Discord.
 
 - `/capy task:<text>` starts a Capy run and replies to the command message with its result or PR link when the run ends.
-- `/ping` replies with `pong 🧀` and the bot's Discord heartbeat latency in milliseconds.
+- `/ping` replies with `pong 🐱` and the bot's Discord heartbeat latency in milliseconds.
 
 The v1 bot does not forward replies or provide a PR notification feed.
 
