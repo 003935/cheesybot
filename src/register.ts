@@ -1,9 +1,9 @@
 import { REST, Routes } from "discord.js";
-import { capyCommand } from "./commands/capy";
+import { capyCommand, modelCommand } from "./commands/capy";
 import { config } from "./config";
 
 await new REST({ version: "10" }).setToken(config.discordToken).put(
   Routes.applicationCommands(config.discordClientId),
-  { body: [capyCommand.toJSON()] },
+  { body: [capyCommand.toJSON(), modelCommand.toJSON()] },
 );
-console.log("Registered /capy command");
+console.log("Registered /capy and /capy-model commands");

@@ -6,4 +6,5 @@ node_modules/
 *.sqlite-*
 *.db
 dist/
+data/
 .DS_Store
