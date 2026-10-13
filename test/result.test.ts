@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resultFor } from "../src/result";
+import { resultFor, threadLink } from "../src/result";
 import type { Thread, TranscriptMessage } from "../src/capy/client";
 
 const thread: Thread = { id: "thread-1", status: "idle" };
@@ -20,5 +20,16 @@ describe("resultFor", () => {
 
   test("lost overrides an unfinished result", () => {
     expect(resultFor(thread, [], "link", true).kind).toBe("lost");
+  });
+});
+
+describe("links", () => {
+  test("PR results use a short labelled link", () => {
+    expect(resultFor(thread, [assistant("done: https://github.com/a/b/pull/12")], "link").text).toBe("✅ PR ready: [PR #12](https://github.com/a/b/pull/12)");
+  });
+
+  test("thread links are a labelled hyperlink without a preview card", () => {
+    expect(threadLink("t-1", "https://capy.ai/thread/{id}")).toBe("[Open in Capy](<https://capy.ai/thread/t-1>)");
+    expect(threadLink("t-1")).toBe("Capy thread t-1");
   });
 });
