@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordjsErrorCodes, EmbedBuilder, PermissionFlagsBits,
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordjsErrorCodes, MessageFlags, PermissionFlagsBits,
   type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Message, type ThreadChannel } from "discord.js";
 import { CapyError, type CapyClient, type TranscriptMessage } from "./capy/client";
 import { parseDirectives, modelError } from "./directives";
@@ -12,6 +12,7 @@ import type { GitHubClient, PrRef } from "./github/client";
 type Stores = ReturnType<typeof stores>;
 type Settings = typeof config;
 const mentions = { parse: [] as [] };
+const quiet = { allowedMentions: mentions, flags: MessageFlags.SuppressEmbeds as const };
 const prPattern = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;
 
 export class Conversations {
@@ -103,41 +104,41 @@ export class Conversations {
       return;
     }
     if (!this.allowed(message.guildId, message.member?.permissions, message.member?.roles)) {
-      await message.reply({ content: this.accessDescription(message.guildId), allowedMentions: mentions });
+      await message.reply({ content: this.accessDescription(message.guildId), ...quiet });
       return;
     }
     const task = this.stripMention(message.content);
     await this.create(task, this.name(message), message.id, message.guildId,
       (title) => message.startThread({ name: title }),
-      (text) => message.reply({ content: text, allowedMentions: mentions }));
+      (text) => message.reply({ content: text, ...quiet }));
   }
 
   async slash(interaction: ChatInputCommandInteraction): Promise<void> {
     if (interaction.guildId && !this.allowed(interaction.guildId, interaction.memberPermissions,
       interaction.member?.roles)) {
-      await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, allowedMentions: mentions });
+      await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, ...quiet });
       return;
     }
     await interaction.deferReply();
     if (!interaction.guildId || interaction.channel?.isThread()) {
-      await interaction.editReply("Use /capy in a server text channel so I can open a thread.");
+      await interaction.editReply({ content: "Use /capy in a server text channel so I can open a thread.", ...quiet });
       return;
     }
     const task = interaction.options.getString("task", true);
     const created = await this.create(task, interaction.member && "displayName" in interaction.member ? String(interaction.member.displayName) : interaction.user.globalName ?? interaction.user.username,
       interaction.id, interaction.guildId,
       async (title) => {
-        await interaction.editReply("🦫 On it — opening a thread...");
+        await interaction.editReply({ content: "🦫 On it — opening a thread...", ...quiet });
         const reply = await interaction.fetchReply();
         return reply.startThread({ name: title });
       },
-      (text) => interaction.editReply(text));
-    if (created) await interaction.editReply("🦫 On it — continue in the thread below.");
+      (text) => interaction.editReply({ content: text, ...quiet }));
+    if (created) await interaction.editReply({ content: "🦫 On it — continue in the thread below.", ...quiet });
   }
 
   async modelSetting(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true });
+      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, ...quiet });
       return;
     }
     const model = interaction.options.getString("model");
@@ -154,23 +155,23 @@ export class Conversations {
         };
         this.state.settings.save();
       } catch (error) {
-        await interaction.reply({ content: (error as Error).message, ephemeral: true });
+        await interaction.reply({ content: (error as Error).message, ephemeral: true, ...quiet });
         return;
       }
     }
     const selected = this.state.settings.data[interaction.guildId] ?? {};
-    await interaction.reply({ content: `Model: ${selected.modelId ?? this.settings.capyModel ?? "default"}; effort: ${selected.reasoningMode ?? "default"}.`, ephemeral: true });
+    await interaction.reply({ content: `Model: ${selected.modelId ?? this.settings.capyModel ?? "default"}; effort: ${selected.reasoningMode ?? "default"}.`, ephemeral: true, ...quiet });
   }
 
   async accessSetting(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true });
+      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, ...quiet });
       return;
     }
     const role = interaction.options.getRole("role");
     const reset = interaction.options.getBoolean("reset");
     if (role && reset) {
-      await interaction.reply({ content: "Choose a role or reset, not both.", ephemeral: true });
+      await interaction.reply({ content: "Choose a role or reset, not both.", ephemeral: true, ...quiet });
       return;
     }
     if (role || reset) {
@@ -180,7 +181,7 @@ export class Conversations {
       this.state.settings.data[interaction.guildId] = current;
       this.state.settings.save();
     }
-    await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, allowedMentions: mentions });
+    await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, ...quiet });
   }
 
   async reply(message: Message): Promise<void> {
@@ -196,20 +197,20 @@ export class Conversations {
         const status = await this.capy.getThread(link.capyThreadId);
         await this.capy.interrupt(link.capyThreadId);
         if (status.status === "working" && this.watchers.has(link.capyThreadId)) this.stopped.add(link.capyThreadId);
-        await message.reply({ content: "⏹️ Stopped", allowedMentions: mentions });
+        await message.reply({ content: "⏹️ Stopped", ...quiet });
         return;
       }
       if (control === "mute" || control === "unmute") {
         link.muted = control === "mute";
         this.state.threads.save();
-        await message.reply({ content: link.muted ? "🔇 Muted: mention me to talk to Capy" : "🔊 Unmuted", allowedMentions: mentions });
+        await message.reply({ content: link.muted ? "🔇 Muted: mention me to talk to Capy" : "🔊 Unmuted", ...quiet });
         return;
       }
       if (control === "archive") {
         await this.capy.archive(link.capyThreadId);
         link.archived = true;
         this.state.threads.save();
-        await message.reply({ content: "Thread archived.", allowedMentions: mentions });
+        await message.reply({ content: "Thread archived.", ...quiet });
         await message.channel.setLocked(true);
         await message.channel.setArchived(true);
         return;
@@ -229,7 +230,7 @@ export class Conversations {
       void this.startWatcher(message.channel, link, status.status !== "working");
     } catch (error) {
       await message.react("⚠️");
-      await message.reply({ content: modelError(error) ?? (error instanceof Error && !("tag" in error) ? error.message : "Could not forward that message."), allowedMentions: mentions });
+      await message.reply({ content: modelError(error) ?? (error instanceof Error && !("tag" in error) ? error.message : "Could not forward that message."), ...quiet });
     }
   }
 
@@ -261,8 +262,8 @@ export class Conversations {
     const capyId = link.capyThreadId;
     const web = threadLink(capyId, this.settings.threadUrl);
     const started = Date.now();
-    const status = await channel.send({ content: `🦫 Working · 0m 00s · ${web}`, allowedMentions: mentions });
-    const progress = new Progress((text) => status.edit({ content: text, allowedMentions: mentions }), web, started);
+    const status = await channel.send({ content: `🦫 Working · 0m 00s · ${web}`, ...quiet });
+    const progress = new Progress((text) => status.edit({ content: text, ...quiet }), web, started);
     const since = link.lastTranscriptId;
     let outcome: "done" | "lost" = "lost";
     let latest = await this.capy.getThread(capyId);
@@ -293,7 +294,7 @@ export class Conversations {
     if (final) {
       const suffix = `… ${web}`;
       await channel.send({ content: final.length > 1900 ? `${final.slice(0, Math.min(1900, 2000 - suffix.length))}${suffix}` : final,
-        allowedMentions: mentions });
+        ...quiet });
     }
     await this.postPrs(channel, link, assistants);
   }
@@ -308,7 +309,7 @@ export class Conversations {
         new ButtonBuilder().setCustomId(`pr:merge:${number}`).setLabel("Merge").setStyle(ButtonStyle.Primary));
       if (this.settings.threadUrl) components.addComponents(new ButtonBuilder().setLabel("Open in Capy").setStyle(ButtonStyle.Link)
         .setURL(this.settings.threadUrl.replace("{id}", encodeURIComponent(link.capyThreadId))));
-      await channel.send({ embeds: [new EmbedBuilder().setTitle(`PR #${number}`).setURL(url)], components: [components], allowedMentions: mentions });
+      await channel.send({ content: `PR #${number}: ${url}`, components: [components], ...quiet });
       link.postedPrs.push(url);
       this.state.threads.save();
     }
@@ -318,18 +319,19 @@ export class Conversations {
     const match = /^pr:(approve|merge):([1-9]\d*)$/.exec(interaction.customId);
     if (!match) return;
     if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, allowedMentions: mentions });
+      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, ...quiet });
       return;
     }
     const link = this.state.threads.data[interaction.channelId];
-    const url = interaction.message.embeds[0]?.url;
+    const url = /^PR #\d+: (https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*)$/.exec(interaction.message.content)?.[1]
+      ?? interaction.message.embeds[0]?.url;
     const parsed = url && /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/.exec(url);
     if (!link || link.archived || link.guildId !== interaction.guildId || !parsed || parsed[3] !== match[2] || !link.postedPrs.includes(url)) {
-      await interaction.reply({ content: "This PR card is not linked to an active conversation.", ephemeral: true, allowedMentions: mentions });
+      await interaction.reply({ content: "This PR card is not linked to an active conversation.", ephemeral: true, ...quiet });
       return;
     }
     if (!this.github) {
-      await interaction.reply({ content: "PR actions are unavailable: configure GITHUB_TOKEN.", ephemeral: true, allowedMentions: mentions });
+      await interaction.reply({ content: "PR actions are unavailable: configure GITHUB_TOKEN.", ephemeral: true, ...quiet });
       return;
     }
     await interaction.deferReply({ ephemeral: true });
@@ -337,27 +339,27 @@ export class Conversations {
     try {
       const pr = await this.github.getPull(ref);
       if (pr.state !== "open" || !pr.head?.sha) {
-        await interaction.editReply({ content: "Refused: the PR is not open.", allowedMentions: mentions });
+        await interaction.editReply({ content: "Refused: the PR is not open.", ...quiet });
         return;
       }
       if (match[1] === "approve") {
         await this.github.approve(ref, pr.head.sha);
-        await interaction.editReply({ content: `Approved PR #${ref.number}.`, allowedMentions: mentions });
+        await interaction.editReply({ content: `Approved PR #${ref.number}.`, ...quiet });
         return;
       }
       if (pr.mergeable !== true) {
-        await interaction.editReply({ content: "Refused: the PR is not confirmed mergeable.", allowedMentions: mentions });
+        await interaction.editReply({ content: "Refused: the PR is not confirmed mergeable.", ...quiet });
         return;
       }
       const failure = await this.github.checkFailures(ref, pr.head.sha);
       if (failure) {
-        await interaction.editReply({ content: `Refused: ${failure}`, allowedMentions: mentions });
+        await interaction.editReply({ content: `Refused: ${failure}`, ...quiet });
         return;
       }
       await this.github.merge(ref, pr.head.sha);
-      await interaction.editReply({ content: `Merged PR #${ref.number}.`, allowedMentions: mentions });
+      await interaction.editReply({ content: `Merged PR #${ref.number}.`, ...quiet });
     } catch {
-      await interaction.editReply({ content: "GitHub refused the action or could not verify the PR. Check its permissions, checks, and current state on GitHub.", allowedMentions: mentions });
+      await interaction.editReply({ content: "GitHub refused the action or could not verify the PR. Check its permissions, checks, and current state on GitHub.", ...quiet });
     }
   }
 
