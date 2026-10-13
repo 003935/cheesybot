@@ -54,7 +54,8 @@ export function createCapyClient(apiKey: string, baseUrl: string, request: Fetch
         const query = after ? `?after=${encodeURIComponent(after)}` : "";
         const page = await (await call(`/threads/${encodeURIComponent(id)}/messages${query}`)).json() as TranscriptPage;
         items.push(...page.items);
-        if (!page.cursor) return items;
+        // Archived or empty threads answer with an all-zero cursor that never advances or becomes null.
+        if (!page.cursor || (!page.items.length && /^0+$/.test(page.cursor))) return items;
         if (page.cursor === after) {
           if (++stalled === 5) throw new Error("Transcript pagination stalled");
           await Bun.sleep(1000);

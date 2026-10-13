@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits,
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordjsErrorCodes, EmbedBuilder, PermissionFlagsBits,
   type ChatInputCommandInteraction, type Client, type Message, type ThreadChannel } from "discord.js";
 import { CapyError, type CapyClient, type TranscriptMessage } from "./capy/client";
 import { parseDirectives, modelError } from "./directives";
@@ -75,6 +75,8 @@ export class Conversations {
       discordThread = await openThread(parsed.text.slice(0, 80));
     } catch (error) {
       console.error("Could not open Discord thread", error);
+      // requestId dedupes on Capy's side, so another bot instance that already opened the thread shares this run.
+      if ((error as { code?: unknown }).code === DiscordjsErrorCodes.MessageExistingThread) return false;
       try {
         await this.capy.interrupt(thread.id);
         await this.capy.archive(thread.id);

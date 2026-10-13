@@ -318,3 +318,29 @@ test("only one watcher starts per Capy thread", async () => {
     expect(sends).toBe(1);
   } finally { local.cleanup(); }
 });
+
+test("a thread already opened by another bot instance keeps the shared Capy run alive", async () => {
+  const local = state();
+  try {
+    const actions: string[] = [];
+    const capy = { createThread: async () => ({ id: "shared", status: "working" }),
+      interrupt: async () => { actions.push("interrupt"); }, archive: async () => { actions.push("archive"); } } as unknown as CapyClient;
+    const service = new Conversations(discord, capy, local.store, settings);
+    const message = { id: "msg", content: "<@bot> task", guildId: "guild", author: { bot: false, username: "Alice" }, member: { displayName: "Alice", permissions: { has: () => true } },
+      channel: { isThread: () => false }, mentions: { users: { has: () => true } },
+      startThread: async () => { throw Object.assign(new Error("The message already has a thread"), { code: "MessageExistingThread" }); },
+      reply: async () => {} } as unknown as Message;
+    const original = console.error;
+    console.error = () => {};
+    try { await service.mention(message); } finally { console.error = original; }
+    expect(actions).toEqual([]);
+  } finally { local.cleanup(); }
+});
+
+test("an empty transcript with the all-zero cursor ends paging instead of stalling", async () => {
+  let calls = 0;
+  const fake: Fetch = async () => { calls++; return Response.json({ items: [], cursor: "00000000000000000000000000", beforeCursor: null }); };
+  const client = createCapyClient("key", "https://example.test/api/v1", fake);
+  expect(await client.getTranscript("archived")).toEqual([]);
+  expect(calls).toBe(1);
+});
