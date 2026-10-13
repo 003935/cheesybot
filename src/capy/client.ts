@@ -1,4 +1,4 @@
-export type Thread = { id: string; status: "working" | "waiting" | "idle" | "failed" | "archived" };
+export type Thread = { id: string; status: "working" | "waiting" | "idle" | "failed" | "archived"; updatedAt?: string };
 export type TranscriptMessage = { id: string; source: "user" | "assistant" | "tool"; text: string; createdAt: string };
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type TranscriptPage = { items: TranscriptMessage[]; cursor: string | null; beforeCursor: string | null };
@@ -35,6 +35,15 @@ export function createCapyClient(apiKey: string, baseUrl: string, request: Fetch
   }
 
   return {
+    async listThreads(projectId: string, cursor?: string): Promise<{ items: Thread[]; cursor: string | null }> {
+      const query = new URLSearchParams({ projectId });
+      if (cursor) query.set("cursor", cursor);
+      return (await call(`/threads?${query}`)).json() as Promise<{ items: Thread[]; cursor: string | null }>;
+    },
+    async getTranscriptPage(id: string, after?: string): Promise<TranscriptPage> {
+      const query = after ? `?after=${encodeURIComponent(after)}` : "";
+      return (await call(`/threads/${encodeURIComponent(id)}/messages${query}`)).json() as Promise<TranscriptPage>;
+    },
     async createThread({ model, modelId, ...input }: { requestId: string; projectId: string; message: string; title: string; model?: Model; modelId?: string }): Promise<Thread> {
       const response = await call("/threads", {
         method: "POST",
