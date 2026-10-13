@@ -67,7 +67,7 @@ test("admin and configured role can start tasks; others get a short or ephemeral
     const slashDenied = interaction(member());
     await service.slash(slashDenied.fake);
     expect(slashDenied.deferred).toBe(false);
-    expect(slashDenied.replies).toEqual([{ content: "Members with Manage Server can use Capy.", ephemeral: true }]);
+    expect(slashDenied.replies).toEqual([{ content: "Members with Manage Server can use Capy.", ephemeral: true, allowedMentions: { parse: [] } }]);
 
     const adminTask = message(admin, false, "<@bot> task");
     (adminTask.fake as unknown as { startThread: (value: unknown) => Promise<unknown> }).startThread = async () => ({ id: "new-thread" });
@@ -89,6 +89,9 @@ test("admin and configured role can start tasks; others get a short or ephemeral
     const denied = message(member("wrong-role"), false, "<@bot> task");
     await service.mention(denied.fake);
     expect(denied.replies[0]).toMatchObject({ content: "Members with Manage Server or the <@&role-1> role can use Capy." });
+    const slashRoleDenied = interaction(member("wrong-role"));
+    await service.slash(slashRoleDenied.fake);
+    expect(slashRoleDenied.replies).toEqual([{ content: "Members with Manage Server or the <@&role-1> role can use Capy.", ephemeral: true, allowedMentions: { parse: [] } }]);
     expect(created).toHaveLength(3);
   } finally { rmSync(path, { recursive: true, force: true }); }
 });

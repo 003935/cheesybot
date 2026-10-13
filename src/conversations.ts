@@ -112,7 +112,7 @@ export class Conversations {
   async slash(interaction: ChatInputCommandInteraction): Promise<void> {
     if (interaction.guildId && !this.allowed(interaction.guildId, interaction.memberPermissions,
       interaction.member?.roles)) {
-      await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true });
+      await interaction.reply({ content: this.accessDescription(interaction.guildId), ephemeral: true, allowedMentions: mentions });
       return;
     }
     await interaction.deferReply();
