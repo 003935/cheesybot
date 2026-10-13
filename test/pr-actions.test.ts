@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PermissionFlagsBits, type ButtonInteraction, type Client, type ThreadChannel } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type Client, type ThreadChannel } from "discord.js";
 import type { CapyClient } from "../src/capy/client";
 import { Conversations } from "../src/conversations";
 import { createGitHubClient } from "../src/github/client";
@@ -25,7 +25,7 @@ function setup(request: (url: string, init?: RequestInit) => Promise<Response> =
     token ? createGitHubClient("secret", fetcher) : undefined);
   const interaction = (action: "approve" | "merge", admin = true, cardUrl = url) => {
     const replies: unknown[] = [];
-    const fake = { customId: `pr:${action}:12`, guildId: "guild", channelId: "thread", message: { embeds: [{ url: cardUrl }] },
+    const fake = { customId: `pr:${action}:12`, guildId: "guild", channelId: "thread", message: { content: `PR #12: ${cardUrl}`, embeds: [] },
       memberPermissions: { has: (permission: bigint) => admin && permission === PermissionFlagsBits.ManageGuild },
       reply: async (value: unknown) => { replies.push(value); }, deferReply: async (value: unknown) => { replies.push(value); },
       editReply: async (value: unknown) => { replies.push(value); } } as unknown as ButtonInteraction;
@@ -48,6 +48,9 @@ test("PR cards include both actions and retain link buttons", async () => {
     expect(buttons[1]!.data.custom_id).toBe("pr:approve:12");
     expect(buttons[2]!.data.custom_id).toBe("pr:merge:12");
     expect(card.allowedMentions).toEqual({ parse: [] });
+    expect(card.content).toBe(`PR #12: ${url}`);
+    expect(card).not.toHaveProperty("embeds");
+    expect(card.flags).toBe(MessageFlags.SuppressEmbeds);
   } finally { local.cleanup(); }
 });
 
@@ -57,6 +60,7 @@ test("non-admin, forged card, archived link, and missing token never call GitHub
     const denied = local.interaction("merge", false);
     await local.service.prAction(denied.fake);
     expect(denied.replies[0]).toMatchObject({ ephemeral: true, content: "Manage Server permission is required." });
+    expect(denied.replies[0]).toMatchObject({ flags: MessageFlags.SuppressEmbeds });
     const forged = local.interaction("merge", true, "https://github.com/other/repo/pull/12");
     await local.service.prAction(forged.fake);
     expect(forged.replies[0]).toMatchObject({ content: "This PR card is not linked to an active conversation." });
@@ -73,6 +77,17 @@ test("non-admin, forged card, archived link, and missing token never call GitHub
   } finally { withoutToken.cleanup(); }
 });
 
+test("previously posted embed cards still validate their PR URL", async () => {
+  const local = setup(undefined, false);
+  try {
+    const action = local.interaction("approve");
+    (action.fake.message as unknown as { content: string; embeds: { url: string }[] }).content = "";
+    (action.fake.message as unknown as { embeds: { url: string }[] }).embeds = [{ url }];
+    await local.service.prAction(action.fake);
+    expect(action.replies[0]).toMatchObject({ content: "PR actions are unavailable: configure GITHUB_TOKEN." });
+  } finally { local.cleanup(); }
+});
+
 test("approve submits review at current head, but refuses a closed PR", async () => {
   let state = "open";
   const local = setup(async (_url, init) => Response.json(init?.method === "POST" ? {} : { state, head: { sha: "abc" } }));
@@ -82,6 +97,7 @@ test("approve submits review at current head, but refuses a closed PR", async ()
     expect(local.calls.map((call) => call.init?.method)).toEqual(["GET", "POST"]);
     expect(JSON.parse(String(local.calls[1]!.init?.body))).toEqual({ event: "APPROVE", commit_id: "abc" });
     expect(approved.replies.at(-1)).toMatchObject({ content: "Approved PR #12." });
+    expect(approved.replies.at(-1)).toMatchObject({ flags: MessageFlags.SuppressEmbeds });
     state = "closed";
     const closed = local.interaction("approve");
     await local.service.prAction(closed.fake);

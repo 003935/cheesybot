@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PermissionFlagsBits, type ChatInputCommandInteraction, type Client, type Message } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction, type Client, type Message } from "discord.js";
 import type { CapyClient } from "../src/capy/client";
 import { accessCommand } from "../src/commands/capy";
 import { Conversations } from "../src/conversations";
@@ -48,7 +48,8 @@ test("/capy-access requires Manage Server and registers role and reset options",
     const service = new Conversations(discord, {} as CapyClient, store, configValues);
     const denied = interaction(member());
     await service.accessSetting(denied.fake);
-    expect(denied.replies).toEqual([{ content: "Manage Server permission is required.", ephemeral: true }]);
+    expect(denied.replies).toEqual([{ content: "Manage Server permission is required.", ephemeral: true,
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
     expect(store.settings.data.guild).toBeUndefined();
   } finally { rmSync(path, { recursive: true, force: true }); }
 });
@@ -63,11 +64,13 @@ test("admin and configured role can start tasks; others get a short or ephemeral
     service.startWatcher = async () => {};
     const noAccess = message(member(), false, "<@bot> task");
     await service.mention(noAccess.fake);
-    expect(noAccess.replies).toEqual([{ content: "Members with Manage Server can use Capy.", allowedMentions: { parse: [] } }]);
+    expect(noAccess.replies).toEqual([{ content: "Members with Manage Server can use Capy.",
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
     const slashDenied = interaction(member());
     await service.slash(slashDenied.fake);
     expect(slashDenied.deferred).toBe(false);
-    expect(slashDenied.replies).toEqual([{ content: "Members with Manage Server can use Capy.", ephemeral: true, allowedMentions: { parse: [] } }]);
+    expect(slashDenied.replies).toEqual([{ content: "Members with Manage Server can use Capy.", ephemeral: true,
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
 
     const adminTask = message(admin, false, "<@bot> task");
     (adminTask.fake as unknown as { startThread: (value: unknown) => Promise<unknown> }).startThread = async () => ({ id: "new-thread" });
@@ -85,13 +88,15 @@ test("admin and configured role can start tasks; others get a short or ephemeral
     (slashAllowed.fake as unknown as { fetchReply: () => Promise<unknown> }).fetchReply = async () => ({ startThread: async () => ({ id: "slash-thread" }) });
     await service.slash(slashAllowed.fake);
     expect(slashAllowed.deferred).toBe(true);
+    expect(slashAllowed.replies.every((reply) => (reply as { flags: number }).flags === MessageFlags.SuppressEmbeds)).toBe(true);
     expect(created).toEqual(["message", "message", "interaction"]);
     const denied = message(member("wrong-role"), false, "<@bot> task");
     await service.mention(denied.fake);
     expect(denied.replies[0]).toMatchObject({ content: "Members with Manage Server or the <@&role-1> role can use Capy." });
     const slashRoleDenied = interaction(member("wrong-role"));
     await service.slash(slashRoleDenied.fake);
-    expect(slashRoleDenied.replies).toEqual([{ content: "Members with Manage Server or the <@&role-1> role can use Capy.", ephemeral: true, allowedMentions: { parse: [] } }]);
+    expect(slashRoleDenied.replies).toEqual([{ content: "Members with Manage Server or the <@&role-1> role can use Capy.", ephemeral: true,
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
     expect(created).toHaveLength(3);
   } finally { rmSync(path, { recursive: true, force: true }); }
 });

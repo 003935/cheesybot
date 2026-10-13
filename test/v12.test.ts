@@ -89,7 +89,10 @@ test("a PR card is posted once per linked thread across multiple runs", async ()
     const link = { capyThreadId: "thread", guildId: "guild", muted: false, archived: false, postedPrs: [] as string[] };
     await service.startWatcher(channel, link);
     await service.startWatcher(channel, link);
-    expect(sent.filter((item) => "embeds" in item)).toHaveLength(1);
+    const cards = sent.filter((item) => item.content === "PR #3: https://github.com/a/b/pull/3");
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).not.toHaveProperty("embeds");
+    expect(sent.every((item) => item.flags === 4)).toBe(true);
     expect(link.postedPrs).toEqual(["https://github.com/a/b/pull/3"]);
   } finally { local.cleanup(); }
 });

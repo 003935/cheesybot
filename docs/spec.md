@@ -131,10 +131,16 @@ Parsed from the task text and from replies, then removed before sending:
 - When the run ends:
   - Edit the status message to `✅ Done · <elapsed>`, `❌ Failed` or `⏹️ Stopped`, keeping the step lines.
   - Post the agent's **final assistant message** for this run as a normal message: the reply in the conversation, up to 1900 chars plus `… [Open in Capy](<link>)` if truncated.
-  - For each PR URL in this run's assistant messages that hasn't been posted in this thread before, post a **PR embed**:
-    - title `PR #N`, url = PR link.
+  - For each PR URL in this run's assistant messages that hasn't been posted in this thread before, post a one-line **PR message** with the URL and action buttons, without an embed:
+    - content `PR #N: <PR link>` on one line.
     - Two link buttons: **View on GitHub** and **Open in Capy**.
 - All bot messages use `allowedMentions: { parse: [] }`.
+
+### Compact bot output
+
+- Suppress automatic link previews on every bot message and edit, including slash and permission-error responses, live progress, final replies, and PR messages. Keep URLs clickable in the text.
+- Conversation PRs use the one-line message above instead of a custom embed. Keep the existing link and admin action buttons; validate a button against the PR URL in its message and the linked thread's posted URLs. Previously posted embed cards remain actionable.
+- This changes presentation only: task permissions and GitHub action permissions/errors remain unchanged. Test preview suppression across message paths, the compact PR message, and denied forged actions with fake Discord objects.
 
 ### Watcher rules
 
@@ -196,13 +202,13 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
 - The poller runs every 45s:
   - `GET /threads?projectId=` and keep threads whose `updatedAt` changed since the last poll.
   - For each one, read new transcript messages (page forward from the last seen cursor) and extract PR URLs.
-  - Post any PR URL not seen before as an embed: PR link, Capy thread title, Capy link.
+  - Post any PR URL not seen before as a one-line message without an embed or link preview.
   - Keep a seen-URLs set in the same JSON file so restarts don't repost.
 - On the first poll after startup, record existing PRs as seen without posting them, so the bot doesn't flood the channel.
 
 ## PR card actions
 
-- Add **Approve** and **Merge** buttons to conversation PR embeds alongside the link buttons. Their IDs identify the PR; accept clicks only on a PR card in its linked Discord thread, whose URL is in that thread's posted PRs. Replies are ephemeral and suppress mentions.
+- Add **Approve** and **Merge** buttons to conversation PR messages alongside the link buttons. Their IDs identify the PR; accept clicks only on a PR message in its linked Discord thread, whose URL is in that thread's posted PRs. Replies are ephemeral and suppress mentions.
 - Both actions require Manage Server (the optional `/capy-access` role does not suffice). Require `GITHUB_TOKEN` to make GitHub calls; if missing, explain that the action is unavailable. The token is a maintainer's GitHub credential with pull-request write access, not a Discord user's identity; GitHub may reject reviews of its own PRs.
 - Approve an open PR with a submitted `APPROVE` review on its current head. Merge only an open PR whose `mergeable` is explicitly true and whose head has no failed check runs (including cancelled, timed out, or action-required conclusions) or failed/error commit statuses. Refuse unknown mergeability or incomplete check/status listings rather than merging without a full safety check. Pass the checked head SHA to GitHub's merge endpoint so a concurrent push cannot bypass the check. Report GitHub failures without echoing credentials or response bodies.
 - Test card controls and both actions, including non-admin and forged/stale card denial, missing token, closed/unmergeable PR, failing checks/statuses, pagination, and a successful merge using fake Discord objects and fake fetch. Never call the real GitHub API in tests.
