@@ -1,8 +1,10 @@
 import { CapyError, type CapyClient } from "./client";
 import { parseSse } from "./sse";
+import type { Frame } from "./sse";
 
-export async function waitForRunEnd(client: Pick<CapyClient, "stream">, id: string, sleep: (ms: number) => Promise<void> = Bun.sleep): Promise<"done" | "lost"> {
-  let lastId: string | undefined;
+export async function waitForRunEnd(client: Pick<CapyClient, "stream">, id: string, sleep: (ms: number) => Promise<void> = Bun.sleep,
+  options: { after?: string; onEvent?: (frame: Frame) => void | Promise<void> } = {}): Promise<"done" | "lost"> {
+  let lastId = options.after;
   let failures = 0;
   while (failures < 5) {
     let progressed = false;
@@ -15,6 +17,7 @@ export async function waitForRunEnd(client: Pick<CapyClient, "stream">, id: stri
           lastId = frame.id;
           progressed = true;
         }
+        await options.onEvent?.(frame);
         if (frame.event === "done") return "done";
         if (frame.event === "error") break;
       }
