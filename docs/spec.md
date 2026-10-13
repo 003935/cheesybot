@@ -7,7 +7,7 @@ A Discord bot that sends coding tasks to Capy (https://capy.ai) through Capy's p
 - **v1, `/capy` command:** a member runs `/capy task:<text>`. The bot starts a Capy thread, waits for the run to end, and posts one result message.
 - **v1.2, conversations like Capy for Slack:** `@cheesybot <task>` opens a Discord thread with live progress. Anyone can reply in the thread to steer the agent. `stop`/`mute`/`archive` controls, `model=`/`reasoning=` directives, `/capy-model` server defaults, and PR embeds with buttons.
 - **v1.5, `/capy-notify` PR feed:** an admin picks a channel. Every PR Capy opens in the project gets posted there, including runs started from the Capy web app, Slack or Linear.
-- **Later, not in scope now:** approve & merge from Discord (maintainers only), live-updating PR cards, channel→project mapping, forum-post triage (#bug-reports), and a Teams adapter.
+- **Later, not in scope now:** live-updating PR cards, channel→project mapping, forum-post triage (#bug-reports), and a Teams adapter.
 
 ## Stack
 
@@ -199,6 +199,13 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
   - Post any PR URL not seen before as an embed: PR link, Capy thread title, Capy link.
   - Keep a seen-URLs set in the same JSON file so restarts don't repost.
 - On the first poll after startup, record existing PRs as seen without posting them, so the bot doesn't flood the channel.
+
+## PR card actions
+
+- Add **Approve** and **Merge** buttons to conversation PR embeds alongside the link buttons. Their IDs identify the PR; accept clicks only on a PR card in its linked Discord thread, whose URL is in that thread's posted PRs. Replies are ephemeral and suppress mentions.
+- Both actions require Manage Server (the optional `/capy-access` role does not suffice). Require `GITHUB_TOKEN` to make GitHub calls; if missing, explain that the action is unavailable. The token is a maintainer's GitHub credential with pull-request write access, not a Discord user's identity; GitHub may reject reviews of its own PRs.
+- Approve an open PR with a submitted `APPROVE` review on its current head. Merge only an open PR whose `mergeable` is explicitly true and whose head has no failed check runs (including cancelled, timed out, or action-required conclusions) or failed/error commit statuses. Refuse unknown mergeability or incomplete check/status listings rather than merging without a full safety check. Pass the checked head SHA to GitHub's merge endpoint so a concurrent push cannot bypass the check. Report GitHub failures without echoing credentials or response bodies.
+- Test card controls and both actions, including non-admin and forged/stale card denial, missing token, closed/unmergeable PR, failing checks/statuses, pagination, and a successful merge using fake Discord objects and fake fetch. Never call the real GitHub API in tests.
 
 ## Testing
 

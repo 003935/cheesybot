@@ -17,4 +17,5 @@ export const config = {
   capyBaseUrl: Bun.env.CAPY_BASE_URL?.trim() || "https://api.capy.ai/api/v1",
   capyModel: Bun.env.CAPY_MODEL?.trim() || undefined,
   threadUrl,
+  githubToken: Bun.env.GITHUB_TOKEN?.trim() || undefined,
 };

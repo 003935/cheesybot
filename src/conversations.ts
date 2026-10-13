@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, DiscordjsErrorCodes, EmbedBuilder, PermissionFlagsBits,
-  type ChatInputCommandInteraction, type Client, type Message, type ThreadChannel } from "discord.js";
+  type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Message, type ThreadChannel } from "discord.js";
 import { CapyError, type CapyClient, type TranscriptMessage } from "./capy/client";
 import { parseDirectives, modelError } from "./directives";
 import { Progress } from "./progress";
@@ -7,6 +7,7 @@ import { waitForRunEnd } from "./capy/watch";
 import { threadLink } from "./result";
 import type { Link, stores } from "./state";
 import type { config } from "./config";
+import type { GitHubClient, PrRef } from "./github/client";
 
 type Stores = ReturnType<typeof stores>;
 type Settings = typeof config;
@@ -20,7 +21,7 @@ export class Conversations {
   private readonly stopped = new Set<string>();
 
   constructor(private readonly discord: Client, private readonly capy: CapyClient,
-    private readonly state: Stores, private readonly settings: Settings) {}
+    private readonly state: Stores, private readonly settings: Settings, private readonly github?: GitHubClient) {}
 
   watching(id: string) { return this.watchers.has(id); }
 
@@ -301,12 +302,62 @@ export class Conversations {
     for (const item of assistants) for (const url of item.text.match(prPattern) ?? []) {
       if (link.postedPrs.includes(url)) continue;
       const number = url.split("/").at(-1);
-      const components = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setLabel("View on GitHub").setStyle(ButtonStyle.Link).setURL(url));
+      const components = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setLabel("View on GitHub").setStyle(ButtonStyle.Link).setURL(url),
+        new ButtonBuilder().setCustomId(`pr:approve:${number}`).setLabel("Approve").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`pr:merge:${number}`).setLabel("Merge").setStyle(ButtonStyle.Primary));
       if (this.settings.threadUrl) components.addComponents(new ButtonBuilder().setLabel("Open in Capy").setStyle(ButtonStyle.Link)
         .setURL(this.settings.threadUrl.replace("{id}", encodeURIComponent(link.capyThreadId))));
       await channel.send({ embeds: [new EmbedBuilder().setTitle(`PR #${number}`).setURL(url)], components: [components], allowedMentions: mentions });
       link.postedPrs.push(url);
       this.state.threads.save();
+    }
+  }
+
+  async prAction(interaction: ButtonInteraction): Promise<void> {
+    const match = /^pr:(approve|merge):([1-9]\d*)$/.exec(interaction.customId);
+    if (!match) return;
+    if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, allowedMentions: mentions });
+      return;
+    }
+    const link = this.state.threads.data[interaction.channelId];
+    const url = interaction.message.embeds[0]?.url;
+    const parsed = url && /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/.exec(url);
+    if (!link || link.archived || link.guildId !== interaction.guildId || !parsed || parsed[3] !== match[2] || !link.postedPrs.includes(url)) {
+      await interaction.reply({ content: "This PR card is not linked to an active conversation.", ephemeral: true, allowedMentions: mentions });
+      return;
+    }
+    if (!this.github) {
+      await interaction.reply({ content: "PR actions are unavailable: configure GITHUB_TOKEN.", ephemeral: true, allowedMentions: mentions });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const ref: PrRef = { owner: parsed[1]!, repo: parsed[2]!, number: Number(match[2]) };
+    try {
+      const pr = await this.github.getPull(ref);
+      if (pr.state !== "open" || !pr.head?.sha) {
+        await interaction.editReply({ content: "Refused: the PR is not open.", allowedMentions: mentions });
+        return;
+      }
+      if (match[1] === "approve") {
+        await this.github.approve(ref, pr.head.sha);
+        await interaction.editReply({ content: `Approved PR #${ref.number}.`, allowedMentions: mentions });
+        return;
+      }
+      if (pr.mergeable !== true) {
+        await interaction.editReply({ content: "Refused: the PR is not confirmed mergeable.", allowedMentions: mentions });
+        return;
+      }
+      const failure = await this.github.checkFailures(ref, pr.head.sha);
+      if (failure) {
+        await interaction.editReply({ content: `Refused: ${failure}`, allowedMentions: mentions });
+        return;
+      }
+      await this.github.merge(ref, pr.head.sha);
+      await interaction.editReply({ content: `Merged PR #${ref.number}.`, allowedMentions: mentions });
+    } catch {
+      await interaction.editReply({ content: "GitHub refused the action or could not verify the PR. Check its permissions, checks, and current state on GitHub.", allowedMentions: mentions });
     }
   }
 
