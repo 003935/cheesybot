@@ -48,9 +48,75 @@ test("PR cards include both actions and retain link buttons", async () => {
     expect(buttons[1]!.data.custom_id).toBe("pr:approve:12");
     expect(buttons[2]!.data.custom_id).toBe("pr:merge:12");
     expect(card.allowedMentions).toEqual({ parse: [] });
-    expect(card.content).toBe(`PR #12: ${url}`);
+    expect(card.content).toBe(`PR #12: ${url}\nCapy review: Unavailable (GitHub request failed)`);
     expect(card).not.toHaveProperty("embeds");
     expect(card.flags).toBe(MessageFlags.SuppressEmbeds);
+  } finally { local.cleanup(); }
+});
+
+test("Capy status reads every review page and only counts the current head", async () => {
+  let head = "new";
+  let dismissed = false;
+  const ref = { owner: "acme", repo: "widget", number: 12 };
+  const github = createGitHubClient("secret", async (target) => {
+    if (target.endsWith("/pulls/12")) return Response.json({ head: { sha: head } });
+    const page = new URL(target).searchParams.get("page");
+    return Response.json(page === "1" ? Array.from({ length: 100 }, () =>
+      ({ user: { login: "capy-ai[bot]" }, commit_id: "old", state: "COMMENTED" })) :
+      [{ user: { login: "other" }, commit_id: head, state: "APPROVED" },
+        { user: { login: "capy-ai[bot]" }, commit_id: "new", state: dismissed ? "DISMISSED" : "COMMENTED" }]);
+  });
+  expect(await github.capyReview(ref)).toBe("Complete");
+  dismissed = true;
+  expect(await github.capyReview(ref)).toBe("Not yet reviewed on this head");
+  head = "latest";
+  expect(await github.capyReview(ref)).toBe("Not yet reviewed on this head");
+});
+
+test("PR cards refresh review status and preserve action validation", async () => {
+  let reviewed = false;
+  const local = setup(async (target) => target.endsWith("/pulls/12") ?
+    Response.json({ state: "open", head: { sha: "abc" } }) :
+    Response.json(reviewed ? [{ user: { login: "capy-ai[bot]" }, commit_id: "abc", state: "COMMENTED" }] : []));
+  try {
+    local.state.threads.data.thread!.postedPrs = [];
+    const sent: Record<string, unknown>[] = [];
+    const edits: Record<string, unknown>[] = [];
+    const channel = { isThread: () => true,
+      send: async (value: Record<string, unknown>) => { sent.push(value); return { id: "card" }; },
+      messages: { fetch: async (id: string) => { expect(id).toBe("card"); return { edit: async (value: Record<string, unknown>) => { edits.push(value); } }; } } } as unknown as ThreadChannel;
+    await (local.service as unknown as { postPrs: (channel: ThreadChannel, link: unknown, items: unknown[]) => Promise<void> })
+      .postPrs(channel, local.state.threads.data.thread, [{ source: "assistant", text: url }]);
+    expect(sent[0]?.content).toBe(`PR #12: ${url}\nCapy review: Not yet reviewed on this head`);
+    expect(local.state.threads.data.thread!.prCards?.[url]?.messageId).toBe("card");
+    Object.assign((local.service as unknown as { discord: object }).discord, { channels: { fetch: async () => channel } });
+    reviewed = true;
+    await local.service.refreshPrCards();
+    await local.service.refreshPrCards();
+    expect(edits).toHaveLength(1);
+    expect(edits[0]?.content).toBe(`PR #12: ${url}\nCapy review: Complete`);
+    const action = local.interaction("approve", false);
+    (action.fake.message as { content: string }).content = String(edits[0]?.content);
+    await local.service.prAction(action.fake);
+    expect(action.replies[0]).toMatchObject({ content: "Manage Server permission is required." });
+    const forged = local.interaction("merge", true, "https://github.com/other/repo/pull/12");
+    (forged.fake.message as { content: string }).content += "\nCapy review: Complete";
+    await local.service.prAction(forged.fake);
+    expect(forged.replies[0]).toMatchObject({ content: "This PR card is not linked to an active conversation." });
+  } finally { local.cleanup(); }
+});
+
+test("PR status does not query GitHub without a token", async () => {
+  const local = setup(undefined, false);
+  try {
+    local.state.threads.data.thread!.postedPrs = [];
+    const sent: Record<string, unknown>[] = [];
+    await (local.service as unknown as { postPrs: (channel: ThreadChannel, link: unknown, items: unknown[]) => Promise<void> })
+      .postPrs({ send: async (value: Record<string, unknown>) => { sent.push(value); return { id: "card" }; } } as ThreadChannel,
+        local.state.threads.data.thread, [{ source: "assistant", text: url }]);
+    await local.service.refreshPrCards();
+    expect(sent[0]?.content).toBe(`PR #12: ${url}\nCapy review: Unavailable (configure GITHUB_TOKEN)`);
+    expect(local.calls).toHaveLength(0);
   } finally { local.cleanup(); }
 });
 

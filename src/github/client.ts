@@ -1,5 +1,6 @@
 export type PullRequest = { state: string; mergeable: boolean | null; head: { sha: string } };
 export type PrRef = { owner: string; repo: string; number: number };
+type Review = { commit_id: string | null; state: string; user: { login: string } | null };
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export function createGitHubClient(token: string, request: Fetch = fetch) {
@@ -14,6 +15,23 @@ export function createGitHubClient(token: string, request: Fetch = fetch) {
   }
   return {
     getPull: (ref: PrRef) => call<PullRequest>(endpoint(ref)),
+    async capyReview(ref: PrRef): Promise<string> {
+      const pull = await call<PullRequest>(endpoint(ref));
+      if (!pull.head?.sha) throw new Error("GitHub did not return a PR head.");
+      let page = 1;
+      let reviewed = false;
+      while (true) {
+        const reviews = await call<Review[]>(`${endpoint(ref)}/reviews?per_page=100&page=${page++}`);
+        if (!Array.isArray(reviews)) throw new Error("GitHub review results are incomplete.");
+        for (const review of reviews) {
+          if (review.user?.login !== "capy-ai[bot]" || review.commit_id !== pull.head.sha) continue;
+          if (["COMMENTED", "APPROVED", "CHANGES_REQUESTED"].includes(review.state)) reviewed = true;
+          if (review.state === "DISMISSED") reviewed = false;
+        }
+        if (reviews.length < 100) break;
+      }
+      return reviewed ? "Complete" : "Not yet reviewed on this head";
+    },
     approve: (ref: PrRef, sha: string) => call(endpoint(ref) + "/reviews", "POST", { event: "APPROVE", commit_id: sha }),
     async merge(ref: PrRef, sha: string) {
       const result = await call<{ merged: boolean }>(endpoint(ref) + "/merge", "PUT", { sha });

@@ -213,6 +213,12 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
 - Approve an open PR with a submitted `APPROVE` review on its current head. Merge only an open PR whose `mergeable` is explicitly true and whose head has no failed check runs (including cancelled, timed out, or action-required conclusions) or failed/error commit statuses. Refuse unknown mergeability or incomplete check/status listings rather than merging without a full safety check. Pass the checked head SHA to GitHub's merge endpoint so a concurrent push cannot bypass the check. Report GitHub failures without echoing credentials or response bodies.
 - Test card controls and both actions, including non-admin and forged/stale card denial, missing token, closed/unmergeable PR, failing checks/statuses, pagination, and a successful merge using fake Discord objects and fake fetch. Never call the real GitHub API in tests.
 
+## Capy review status on PR cards
+
+- Conversation PR messages keep their one-line PR URL and buttons, followed by `Capy review: <status>`. With `GITHUB_TOKEN`, read the current head and paginate GitHub's PR reviews. A submitted review by `capy-ai[bot]` on that exact head means `Complete`; otherwise show `Not yet reviewed on this head`. A dismissed review does not count. This is a GitHub-observable status, not Capy's internal queued/running state: the public Capy API cannot look up a review by PR.
+- Without a GitHub token, show `Unavailable (configure GITHUB_TOKEN)`; on lookup failure, show `Unavailable (GitHub request failed)` and still post the PR card. Store card message IDs and last displayed statuses with linked threads, and refresh tracked cards on startup and every 45 seconds. Edit only when the status changes; older cards without a stored message ID remain unchanged. Archived links are not refreshed.
+- Reading status costs no Capy run and requires no Discord permission; approve and merge retain their existing Manage Server gate, including for cards with a status line. No status error may echo response bodies or credentials. Test current-head, outdated, dismissed, paginated and missing-token statuses; status updates, unchanged status and forged action denial with fake GitHub and Discord objects.
+
 ## Testing
 
 - `result.ts`: table tests for one PR URL, several URLs (last wins), no URL, a `failed` status, and empty text.

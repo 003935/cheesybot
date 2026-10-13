@@ -7,7 +7,9 @@ A Discord bot that sends coding tasks to [Capy](https://capy.ai) and posts the r
 
 Use `aside ...` for a teammate-only reply; `stop` interrupts a run; `mute` and `unmute` control whether ordinary replies reach Capy (mentions still do); `archive` closes and locks the conversation. Prefix controls with `@cheesybot` if desired. Attachments and DMs are not supported. The PR notification feed is not part of v1.2.
 
-PR links are posted as one-line messages without embeds or link previews; **Approve** and **Merge** buttons remain available to members with Manage Server. Set `GITHUB_TOKEN` to a maintainer account's token with pull-request write access to enable the actions; that GitHub account submits reviews and merges, not the Discord clicker's identity. GitHub does not allow approving your own PR. Merge refuses closed or unmergeable PRs and failed checks or statuses; branch protection still applies.
+PR cards keep the PR URL on the first line without embeds or link previews; **Approve** and **Merge** buttons remain available to members with Manage Server. Set `GITHUB_TOKEN` to a maintainer account's token with pull-request write access to enable the actions; that GitHub account submits reviews and merges, not the Discord clicker's identity. GitHub does not allow approving your own PR. Merge refuses closed or unmergeable PRs and failed checks or statuses; branch protection still applies.
+
+PR cards also show whether Capy's GitHub review is complete on the current PR head. With `GITHUB_TOKEN`, the bot refreshes tracked cards every 45 seconds; without it, the card says the review status is unavailable. This reflects submitted GitHub reviews, not Capy's internal queued or running state.
 
 ## Setup
 
