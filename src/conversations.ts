@@ -15,6 +15,8 @@ const prPattern = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g;
 
 export class Conversations {
   private readonly watchers = new Map<string, Promise<void>>();
+  private readonly pendingRestart = new Map<string, { channel: ThreadChannel; link: Link; force: boolean }>();
+  private readonly settling = new Set<string>();
   private readonly stopped = new Set<string>();
 
   constructor(private readonly discord: Client, private readonly capy: CapyClient,
@@ -55,7 +57,21 @@ export class Conversations {
       await report(modelError(error) ?? ordinary ?? "Could not start the Capy task. Please try again later.");
       return false;
     }
-    const discordThread = await openThread(parsed.text.slice(0, 80));
+    let discordThread: ThreadChannel;
+    try {
+      discordThread = await openThread(parsed.text.slice(0, 80));
+    } catch (error) {
+      console.error("Could not open Discord thread", error);
+      try {
+        await this.capy.interrupt(thread.id);
+        await this.capy.archive(thread.id);
+        await report("Could not open a Discord thread. The Capy run was stopped and archived; check the bot's thread permissions.");
+      } catch (cleanupError) {
+        console.error("Could not clean up orphaned Capy thread", cleanupError);
+        await report(`Could not open a Discord thread. Check Capy thread ${thread.id} and the bot's thread permissions.`);
+      }
+      return false;
+    }
     this.state.threads.data[discordThread.id] = {
       capyThreadId: thread.id, guildId, muted: false, archived: false, postedPrs: [],
     };
@@ -129,8 +145,9 @@ export class Conversations {
     const control = text.toLowerCase();
     try {
       if (control === "stop") {
+        const status = await this.capy.getThread(link.capyThreadId);
         await this.capy.interrupt(link.capyThreadId);
-        this.stopped.add(link.capyThreadId);
+        if (status.status === "working" && this.watchers.has(link.capyThreadId)) this.stopped.add(link.capyThreadId);
         await message.reply({ content: "⏹️ Stopped", allowedMentions: mentions });
         return;
       }
@@ -161,18 +178,33 @@ export class Conversations {
         ...(parsed.model ? { model: parsed.model } : {}),
       });
       await message.react("👀");
-      void this.startWatcher(message.channel, link);
+      void this.startWatcher(message.channel, link, status.status !== "working");
     } catch (error) {
       await message.react("⚠️");
       await message.reply({ content: modelError(error) ?? (error instanceof Error && !("tag" in error) ? error.message : "Could not forward that message."), allowedMentions: mentions });
     }
   }
 
-  startWatcher(channel: ThreadChannel, link: Link): Promise<void> {
+  startWatcher(channel: ThreadChannel, link: Link, force = false): Promise<void> {
     const existing = this.watchers.get(link.capyThreadId);
-    if (existing) return existing;
+    if (existing) {
+      this.pendingRestart.set(link.capyThreadId, { channel, link, force: force || this.settling.has(link.capyThreadId) });
+      return existing;
+    }
+    this.stopped.delete(link.capyThreadId);
     const job = this.watch(channel, link).catch((error: unknown) => console.error("Conversation watcher failed", error))
-      .finally(() => { this.watchers.delete(link.capyThreadId); });
+      .finally(() => {
+        this.watchers.delete(link.capyThreadId);
+        this.settling.delete(link.capyThreadId);
+        const pending = this.pendingRestart.get(link.capyThreadId);
+        this.pendingRestart.delete(link.capyThreadId);
+        if (!pending || pending.link.archived) return;
+        void (async () => {
+          if (pending.force || (await this.capy.getThread(link.capyThreadId)).status === "working") {
+            void this.startWatcher(pending.channel, pending.link);
+          }
+        })().catch((error: unknown) => console.error("Could not restart conversation watcher", error));
+      });
     this.watchers.set(link.capyThreadId, job);
     return job;
   }
@@ -202,6 +234,7 @@ export class Conversations {
       if (latest.status !== "working") break;
       if (round === 3) outcome = "lost";
     }
+    this.settling.add(capyId);
     if (link.archived) return;
     const stopped = this.stopped.delete(capyId);
     await progress.finish(stopped ? "⏹️ Stopped" : outcome === "lost" ? "⚠️ Lost" : latest.status === "failed" ? "❌ Failed" : "✅ Done");

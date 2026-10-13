@@ -182,6 +182,25 @@ test("a server mention creates a linked Discord thread with the message ID as re
   } finally { local.cleanup(); }
 });
 
+test("Discord thread creation failure stops and archives the orphaned Capy run", async () => {
+  const local = state();
+  try {
+    const actions: string[] = [];
+    const capy = { createThread: async () => ({ id: "orphan", status: "working" }),
+      interrupt: async () => { actions.push("interrupt"); }, archive: async () => { actions.push("archive"); } } as unknown as CapyClient;
+    const service = new Conversations(discord, capy, local.store, settings);
+    const replies: unknown[] = [];
+    const message = { id: "msg", content: "<@bot> task", guildId: "guild", author: { bot: false, username: "Alice" }, member: { displayName: "Alice" },
+      channel: { isThread: () => false }, mentions: { users: { has: () => true } },
+      startThread: async () => { throw new Error("Missing permissions"); }, reply: async (value: unknown) => { replies.push(value); } } as unknown as Message;
+    const original = console.error;
+    console.error = () => {};
+    try { await service.mention(message); } finally { console.error = original; }
+    expect(actions).toEqual(["interrupt", "archive"]);
+    expect(JSON.stringify(replies)).toContain("Could not open a Discord thread");
+  } finally { local.cleanup(); }
+});
+
 test("/capy-model saves a guild model and shows the current ephemeral setting", async () => {
   const local = state();
   try {
@@ -228,13 +247,55 @@ test("stop interrupts, archive closes the link, and later messages are ignored",
     const link = { capyThreadId: "capy", guildId: "guild", muted: false, archived: false, postedPrs: [] };
     local.store.threads.data["discord-thread"] = link;
     const actions: string[] = [];
-    const capy = { interrupt: async () => { actions.push("interrupt"); }, archive: async () => { actions.push("archive"); }, sendMessage: async () => { actions.push("send"); } } as unknown as CapyClient;
+    const capy = { getThread: async () => ({ status: "working" }), interrupt: async () => { actions.push("interrupt"); }, archive: async () => { actions.push("archive"); }, sendMessage: async () => { actions.push("send"); } } as unknown as CapyClient;
     const service = new Conversations(discord, capy, local.store, settings);
     await service.reply(fakeMessage("stop").message);
     await service.reply(fakeMessage("archive").message);
     await service.reply(fakeMessage("ignored").message);
     expect(actions).toEqual(["interrupt", "archive"]);
     expect(link.archived).toBe(true);
+  } finally { local.cleanup(); }
+});
+
+test("stop on an idle thread does not label its next run stopped", async () => {
+  const local = state();
+  try {
+    const link = { capyThreadId: "capy", guildId: "guild", muted: false, archived: false, postedPrs: [] };
+    local.store.threads.data["discord-thread"] = link;
+    const sent: string[] = [];
+    const channel = { send: async (value: { content: string }) => { sent.push(value.content); return { edit: async (update: { content: string }) => { sent.push(update.content); } }; } } as unknown as ThreadChannel;
+    const capy = { getThread: async () => ({ status: "idle" }), interrupt: async () => {}, stream: async () => sse("event: done\ndata: {}\n\n"),
+      getTranscript: async () => [] } as unknown as CapyClient;
+    const service = new Conversations(discord, capy, local.store, settings);
+    await service.reply(fakeMessage("stop").message);
+    await service.startWatcher(channel, link);
+    expect(sent.some((line) => line.startsWith("✅ Done"))).toBe(true);
+    expect(sent.some((line) => line.startsWith("⏹️ Stopped"))).toBe(false);
+  } finally { local.cleanup(); }
+});
+
+test("follow-up while a watcher is posting results starts a new watcher", async () => {
+  const local = state();
+  try {
+    const link = { capyThreadId: "capy", guildId: "guild", muted: false, archived: false, postedPrs: [] };
+    local.store.threads.data["discord-thread"] = link;
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    let resolveEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { resolveEntered = resolve; });
+    let streams = 0;
+    const capy = { getThread: async () => ({ status: "idle" }), stream: async () => { streams++; return sse("event: done\ndata: {}\n\n"); },
+      getTranscript: async () => { if (streams === 1) { resolveEntered(); await blocked; } return []; },
+      sendMessage: async () => ({ id: "receipt", deduped: false }) } as unknown as CapyClient;
+    const channel = fakeMessage("reply").channel;
+    const service = new Conversations(discord, capy, local.store, settings);
+    const first = service.startWatcher(channel, link);
+    await entered;
+    await service.reply(fakeMessage("another task").message);
+    release();
+    await first;
+    for (let i = 0; i < 10 && streams < 2; i++) await Bun.sleep(1);
+    expect(streams).toBe(2);
   } finally { local.cleanup(); }
 });
 
