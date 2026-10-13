@@ -44,6 +44,23 @@ test("a stream error reconnects without reading untyped payload fields", async (
   expect(calls).toBe(2);
 });
 
+test("progress across several disconnected streams does not exhaust reconnects", async () => {
+  let calls = 0;
+  const fake: Fetch = async () => {
+    calls++;
+    return calls <= 6 ? sse(`event: transcript\nid: cursor-${calls}\ndata: {}\n\n`) : sse("event: done\ndata: {}\n\n");
+  };
+  expect(await waitForRunEnd(createCapyClient("key", "https://example.test/api/v1", fake), "t", noop)).toBe("done");
+  expect(calls).toBe(7);
+});
+
+test("five empty streams without progress return lost", async () => {
+  let calls = 0;
+  const fake: Fetch = async () => { calls++; return sse(""); };
+  expect(await waitForRunEnd(createCapyClient("key", "https://example.test/api/v1", fake), "t", noop)).toBe("lost");
+  expect(calls).toBe(5);
+});
+
 test("a rate limit waits for retryAfterSeconds before reconnecting", async () => {
   const delays: number[] = [];
   let calls = 0;
