@@ -5,8 +5,9 @@ A Discord bot that sends coding tasks to Capy (https://capy.ai) through Capy's p
 ## Goals
 
 - **v1, `/capy` command:** a member runs `/capy task:<text>`. The bot starts a Capy thread, waits for the run to end, and posts one result message.
+- **v1.2, live progress and model settings:** the status message updates with the agent's steps while it works. `/capy-model` sets the server's model and reasoning effort.
 - **v1.5, `/capy-notify` PR feed:** an admin picks a channel. Every PR Capy opens in the project gets posted there, including runs started from the Capy web app, Slack or Linear.
-- **Later, not in scope now:** live progress edits in a Discord thread, forwarding Discord replies to Capy, Stop/Ask-for-changes buttons, SQLite persistence and resume after restart, forum-post triage (#bug-reports), and a Teams adapter.
+- **Later, not in scope now:** approve & merge from Discord (maintainers only), forwarding Discord replies to Capy, Stop/Ask-for-changes buttons, SQLite persistence and resume after restart, forum-post triage (#bug-reports), and a Teams adapter.
 
 ## Stack
 
@@ -70,6 +71,51 @@ Read the OpenAPI spec before writing the client. Don't guess paths or fields.
    - If the watcher returned `lost`: `⚠️ Lost track of this run: <capy link>`
 6. Post the result with `channel.send`, as a reply to the original interaction message. Don't edit the interaction, because interaction tokens expire after 15 minutes and runs can take longer.
 7. Thread-creation errors: edit the deferred reply with a short message per `_tag`. Unauthorized/Forbidden become "bot is misconfigured", PaidFeatureUnavailable becomes "plan limit reached", RateLimited becomes "busy, try again in Ns".
+
+## v1.2: live progress, `/capy-model`, friendlier model errors
+
+### Observed stream payloads
+
+Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are observed, not documented, so parse them defensively: skip anything that doesn't match and never throw on unknown fields.
+
+- `status`: `{"threadId","status":"working"|"idle"|...}`
+- `transcript` (with an `id:` line): a transcript message, e.g.
+  - `{"id","source":"tool","tool":"bash","text":"Inspecting repository instructions and command layout","createdAt"}`
+  - `{"id","source":"assistant","text":"...","model":"openai/gpt-6-sol","callId","createdAt"}`
+  - `{"id","source":"user","text":"...","authorName","createdAt"}`
+- `assistant`: token fragments `{"callId","text":"PR"}`. **Ignore these**; the finished text arrives later as a `transcript` event.
+- `turn`: `{"phase":"start"}` / `{"phase":"end","outcome":"settled"}`
+- `run`: `{"phase":"end"}`
+
+### Live progress
+
+- The `🦫 On it` reply becomes a live status message. `waitForRunEnd` accepts an `onEvent(frame)` callback, so `capy/` still knows nothing about Discord.
+- The status message shows:
+  ```
+  🦫 Working · 1m 12s · [Open in Capy](<link>)
+  › <last 5 step lines>
+  ```
+  - Step lines are the `text` of `transcript` events with `source: "tool"`, plus the first line of `source: "assistant"` texts, each truncated to 120 chars.
+- Edit it **at most once every 3 seconds** (throttle and coalesce; always flush the latest state). Never edit when nothing changed.
+- When the run ends, edit it to `✅ Done · <elapsed>` (or `❌ Failed`, `🤔 Needs input`) with the step list kept, and post the result message as in v1.
+- The interaction token expires after 15 minutes. If an edit fails, stop editing quietly; the result message still posts via `channel.send`.
+
+### Watch-again fix
+
+`?until=run` closes immediately when the thread isn't working yet. After `done`, fetch the thread. If its status is still `working`, watch again, for up to 3 extra rounds.
+
+### `/capy-model [model] [effort]`
+
+- Requires Manage Server permission.
+- With no options, it replies (ephemeral) with the current model and effort for this server.
+- `model`: free-text model ID (the API has no endpoint that lists models). `effort`: a choice of `low | medium | high | xhigh`, mapped to `model.reasoningMode`.
+- Stored per guild in `data/settings.json`. `/capy` uses the guild setting, falling back to `CAPY_MODEL`; effort is omitted when unset.
+
+### Model errors
+
+When `POST /threads` returns `ModelSelection.Rejected`:
+- `rejection: "not_connected"` or `"disconnected"`: `🔌 This model needs a connected <service> subscription: [Connect in Capy](<https://capy.ai/settings/integrations>)`
+- `message` starting with `Unknown model`: `Unknown model <id>. An admin can change it with /capy-model.`
 
 ## v1.5: `/capy-notify channel:<#channel>`
 
