@@ -5,10 +5,10 @@ export async function waitForRunEnd(client: Pick<CapyClient, "stream">, id: stri
   let lastId: string | undefined;
   let failures = 0;
   while (failures < 5) {
+    let progressed = false;
     try {
       const response = await client.stream(id, lastId);
       if (!response.body) throw new Error("Empty event stream");
-      let progressed = false;
       for await (const frame of parseSse(response.body)) {
         if (frame.event === "heartbeat") continue;
         if (frame.event === "transcript" && frame.id && frame.id !== lastId) {
@@ -21,7 +21,7 @@ export async function waitForRunEnd(client: Pick<CapyClient, "stream">, id: stri
       failures = progressed ? 0 : failures + 1;
       await sleep(2000);
     } catch (error) {
-      failures++;
+      failures = progressed ? 0 : failures + 1;
       await sleep(error instanceof CapyError && error.status === 429 ? (error.retryAfterSeconds ?? 2) * 1000 : 2000);
     }
   }

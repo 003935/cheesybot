@@ -54,6 +54,27 @@ test("progress across several disconnected streams does not exhaust reconnects",
   expect(calls).toBe(7);
 });
 
+test("mid-stream failures after transcript progress reset the failure streak", async () => {
+  let calls = 0;
+  const fake: Fetch = async () => {
+    calls++;
+    if (calls > 5) return sse("event: done\ndata: {}\n\n");
+    let sent = false;
+    return new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(new TextEncoder().encode(`event: transcript\nid: cursor-${calls}\ndata: {}\n\n`));
+        } else {
+          controller.error(new Error("stream interrupted"));
+        }
+      },
+    }));
+  };
+  expect(await waitForRunEnd(createCapyClient("key", "https://example.test/api/v1", fake), "t", noop)).toBe("done");
+  expect(calls).toBe(6);
+});
+
 test("five empty streams without progress return lost", async () => {
   let calls = 0;
   const fake: Fetch = async () => { calls++; return sse(""); };
