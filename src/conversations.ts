@@ -20,6 +20,7 @@ export class Conversations {
   private readonly pendingRestart = new Map<string, { channel: ThreadChannel; link: Link; force: boolean }>();
   private readonly settling = new Set<string>();
   private readonly stopped = new Set<string>();
+  private refreshingPrCards = false;
 
   constructor(private readonly discord: Client, private readonly capy: CapyClient,
     private readonly state: Stores, private readonly settings: Settings, private readonly github?: GitHubClient) {}
@@ -309,9 +310,45 @@ export class Conversations {
         new ButtonBuilder().setCustomId(`pr:merge:${number}`).setLabel("Merge").setStyle(ButtonStyle.Primary));
       if (this.settings.threadUrl) components.addComponents(new ButtonBuilder().setLabel("Open in Capy").setStyle(ButtonStyle.Link)
         .setURL(this.settings.threadUrl.replace("{id}", encodeURIComponent(link.capyThreadId))));
-      await channel.send({ content: `PR #${number}: ${url}`, components: [components], ...quiet });
+      let review = "Unavailable (configure GITHUB_TOKEN)";
+      if (this.github) {
+        try { review = await this.github.capyReview(this.prRef(url)); }
+        catch { review = "Unavailable (GitHub request failed)"; }
+      }
+      const card = await channel.send({ content: `PR #${number}: ${url}\nCapy review: ${review}`, components: [components], ...quiet });
+      if (card.id) (link.prCards ??= {})[url] = { messageId: card.id, status: review };
       link.postedPrs.push(url);
       this.state.threads.save();
+    }
+  }
+
+  private prRef(url: string): PrRef {
+    const [, owner, repo, number] = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/.exec(url) ?? [];
+    if (!owner || !repo || !number) throw new Error("Invalid PR URL");
+    return { owner, repo, number: Number(number) };
+  }
+
+  async refreshPrCards(): Promise<void> {
+    if (!this.github || this.refreshingPrCards) return;
+    this.refreshingPrCards = true;
+    try {
+      for (const [channelId, link] of Object.entries(this.state.threads.data)) {
+        if (link.archived) continue;
+        for (const [url, card] of Object.entries(link.prCards ?? {})) {
+          try {
+            const status = await this.github.capyReview(this.prRef(url));
+            if (status === card.status) continue;
+            const channel = await this.discord.channels.fetch(channelId);
+            if (!channel?.isThread()) continue;
+            const message = await channel.messages.fetch(card.messageId);
+            await message.edit({ content: `PR #${this.prRef(url).number}: ${url}\nCapy review: ${status}`, ...quiet });
+            card.status = status;
+            this.state.threads.save();
+          } catch (error) { console.error(`Could not refresh PR card in ${channelId}`, error); }
+        }
+      }
+    } finally {
+      this.refreshingPrCards = false;
     }
   }
 
@@ -323,7 +360,7 @@ export class Conversations {
       return;
     }
     const link = this.state.threads.data[interaction.channelId];
-    const url = /^PR #\d+: (https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*)$/.exec(interaction.message.content)?.[1]
+    const url = /^PR #\d+: (https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*)(?:\nCapy review: [^\n]+)?$/.exec(interaction.message.content)?.[1]
       ?? interaction.message.embeds[0]?.url;
     const parsed = url && /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/.exec(url);
     if (!link || link.archived || link.guildId !== interaction.guildId || !parsed || parsed[3] !== match[2] || !link.postedPrs.includes(url)) {

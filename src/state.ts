@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ModelDefault } from "./directives";
 
-export type Link = { capyThreadId: string; guildId: string; muted: boolean; archived: boolean; postedPrs: string[]; lastTranscriptId?: string };
+export type Link = { capyThreadId: string; guildId: string; muted: boolean; archived: boolean; postedPrs: string[];
+  prCards?: Record<string, { messageId: string; status: string }>; lastTranscriptId?: string };
 export type GuildSettings = ModelDefault & { accessRoleId?: string };
 
 export function jsonStore<T>(path: string, initial: T): { data: T; save(): void } {

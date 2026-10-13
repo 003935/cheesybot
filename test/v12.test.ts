@@ -89,7 +89,7 @@ test("a PR card is posted once per linked thread across multiple runs", async ()
     const link = { capyThreadId: "thread", guildId: "guild", muted: false, archived: false, postedPrs: [] as string[] };
     await service.startWatcher(channel, link);
     await service.startWatcher(channel, link);
-    const cards = sent.filter((item) => item.content === "PR #3: https://github.com/a/b/pull/3");
+    const cards = sent.filter((item) => item.content === "PR #3: https://github.com/a/b/pull/3\nCapy review: Unavailable (configure GITHUB_TOKEN)");
     expect(cards).toHaveLength(1);
     expect(cards[0]).not.toHaveProperty("embeds");
     expect(sent.every((item) => item.flags === 4)).toBe(true);

@@ -34,5 +34,7 @@ client.on(Events.MessageCreate, (message) => {
 client.once(Events.ClientReady, (ready) => {
   console.log(`Ready as ${ready.user.tag}`);
   void conversations.resume();
+  void conversations.refreshPrCards();
+  setInterval(() => { void conversations.refreshPrCards(); }, 45_000);
 });
 await client.login(config.discordToken);
