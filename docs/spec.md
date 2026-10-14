@@ -211,10 +211,10 @@ Captured from a real run in `test/fixtures/stream-ping.sse`. These shapes are ob
 
 ## PR card actions
 
-- Add **Approve** and **Merge** buttons to conversation PR messages alongside the link buttons. Their IDs identify the PR; accept clicks only on a PR message in its linked Discord thread, whose URL is in that thread's posted PRs. Replies are ephemeral and suppress mentions.
+- Add **Approve** and **Merge** buttons to conversation PR messages alongside the link buttons. Their IDs identify the PR; accept clicks only on a PR message in its linked Discord thread, whose URL is in that thread's posted PRs. All button responses are public in the thread and suppress mention notifications. When someone without Manage Server presses either button, reply publicly with a short warning addressed to that member without pinging them.
 - Both actions require Manage Server (the optional `/capy-access` role does not suffice). Require `GITHUB_TOKEN` to make GitHub calls; if missing, explain that the action is unavailable. The token is a maintainer's GitHub credential with pull-request write access, not a Discord user's identity; GitHub may reject reviews of its own PRs.
 - Approve an open PR with a submitted `APPROVE` review on its current head. Merge only an open PR whose `mergeable` is explicitly true and whose head has no failed check runs (including cancelled, timed out, or action-required conclusions) or failed/error commit statuses. Refuse unknown mergeability or incomplete check/status listings rather than merging without a full safety check. Pass the checked head SHA to GitHub's merge endpoint so a concurrent push cannot bypass the check. Report GitHub failures without echoing credentials or response bodies.
-- Test card controls and both actions, including non-admin and forged/stale card denial, missing token, closed/unmergeable PR, failing checks/statuses, pagination, and a successful merge using fake Discord objects and fake fetch. Never call the real GitHub API in tests.
+- Test card controls and both actions, including public responses and non-admin denial for each button, forged/stale card denial, missing token, closed/unmergeable PR, failing checks/statuses, pagination, and a successful merge using fake Discord objects and fake fetch. Never call the real GitHub API in tests.
 
 ## Capy review status on PR cards
 

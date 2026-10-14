@@ -25,7 +25,8 @@ function setup(request: (url: string, init?: RequestInit) => Promise<Response> =
     token ? createGitHubClient("secret", fetcher) : undefined);
   const interaction = (action: "approve" | "merge", admin = true, cardUrl = url) => {
     const replies: unknown[] = [];
-    const fake = { customId: `pr:${action}:12`, guildId: "guild", channelId: "thread", message: { content: `PR #12: ${cardUrl}`, embeds: [] },
+    const fake = { customId: `pr:${action}:12`, guildId: "guild", channelId: "thread", user: { id: "member-1" },
+      message: { content: `PR #12: ${cardUrl}`, embeds: [] },
       memberPermissions: { has: (permission: bigint) => admin && permission === PermissionFlagsBits.ManageGuild },
       reply: async (value: unknown) => { replies.push(value); }, deferReply: async (value: unknown) => { replies.push(value); },
       editReply: async (value: unknown) => { replies.push(value); } } as unknown as ButtonInteraction;
@@ -98,7 +99,7 @@ test("PR cards refresh review status and preserve action validation", async () =
     const action = local.interaction("approve", false);
     (action.fake.message as { content: string }).content = String(edits[0]?.content);
     await local.service.prAction(action.fake);
-    expect(action.replies[0]).toMatchObject({ content: "Manage Server permission is required." });
+    expect(action.replies[0]).toMatchObject({ content: "<@member-1> hey, don't do that. Manage Server permission is required." });
     const forged = local.interaction("merge", true, "https://github.com/other/repo/pull/12");
     (forged.fake.message as { content: string }).content += "\nCapy review: Complete";
     await local.service.prAction(forged.fake);
@@ -120,16 +121,26 @@ test("PR status does not query GitHub without a token", async () => {
   } finally { local.cleanup(); }
 });
 
-test("non-admin, forged card, archived link, and missing token never call GitHub", async () => {
+test("both PR buttons deny non-admins publicly without pinging or calling GitHub", async () => {
   const local = setup();
   try {
-    const denied = local.interaction("merge", false);
-    await local.service.prAction(denied.fake);
-    expect(denied.replies[0]).toMatchObject({ ephemeral: true, content: "Manage Server permission is required." });
-    expect(denied.replies[0]).toMatchObject({ flags: MessageFlags.SuppressEmbeds });
+    for (const action of ["approve", "merge"] as const) {
+      const denied = local.interaction(action, false);
+      await local.service.prAction(denied.fake);
+      expect(denied.replies).toEqual([{ content: "<@member-1> hey, don't do that. Manage Server permission is required.",
+        allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
+    }
+    expect(local.calls).toHaveLength(0);
+  } finally { local.cleanup(); }
+});
+
+test("forged card, archived link, and missing token never call GitHub", async () => {
+  const local = setup();
+  try {
     const forged = local.interaction("merge", true, "https://github.com/other/repo/pull/12");
     await local.service.prAction(forged.fake);
-    expect(forged.replies[0]).toMatchObject({ content: "This PR card is not linked to an active conversation." });
+    expect(forged.replies).toEqual([{ content: "This PR card is not linked to an active conversation.",
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
     local.state.threads.data.thread!.archived = true;
     await local.service.prAction(local.interaction("approve").fake);
     expect(local.calls).toHaveLength(0);
@@ -138,7 +149,8 @@ test("non-admin, forged card, archived link, and missing token never call GitHub
   try {
     const action = withoutToken.interaction("approve");
     await withoutToken.service.prAction(action.fake);
-    expect(action.replies[0]).toMatchObject({ content: "PR actions are unavailable: configure GITHUB_TOKEN." });
+    expect(action.replies).toEqual([{ content: "PR actions are unavailable: configure GITHUB_TOKEN.",
+      allowedMentions: { parse: [] }, flags: MessageFlags.SuppressEmbeds }]);
     expect(withoutToken.calls).toHaveLength(0);
   } finally { withoutToken.cleanup(); }
 });
@@ -160,10 +172,12 @@ test("approve submits review at current head, but refuses a closed PR", async ()
   try {
     const approved = local.interaction("approve");
     await local.service.prAction(approved.fake);
+    expect(approved.replies[0]).toBeUndefined();
     expect(local.calls.map((call) => call.init?.method)).toEqual(["GET", "POST"]);
     expect(JSON.parse(String(local.calls[1]!.init?.body))).toEqual({ event: "APPROVE", commit_id: "abc" });
     expect(approved.replies.at(-1)).toMatchObject({ content: "Approved PR #12." });
     expect(approved.replies.at(-1)).toMatchObject({ flags: MessageFlags.SuppressEmbeds });
+    expect(approved.replies.at(-1)).not.toHaveProperty("ephemeral");
     state = "closed";
     const closed = local.interaction("approve");
     await local.service.prAction(closed.fake);
@@ -237,7 +251,9 @@ test("merge inspects later check pages and pins successful merge to checked SHA"
     secondPageFailure = false;
     const succeeded = local.interaction("merge");
     await local.service.prAction(succeeded.fake);
+    expect(succeeded.replies[0]).toBeUndefined();
     expect(succeeded.replies.at(-1)).toMatchObject({ content: "Merged PR #12." });
+    expect(succeeded.replies.at(-1)).not.toHaveProperty("ephemeral");
     expect(JSON.parse(String(local.calls.find((call) => call.init?.method === "PUT")?.init?.body))).toEqual({ sha: "abc" });
   } finally { local.cleanup(); }
 });
