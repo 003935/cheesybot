@@ -356,7 +356,7 @@ export class Conversations {
     const match = /^pr:(approve|merge):([1-9]\d*)$/.exec(interaction.customId);
     if (!match) return;
     if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({ content: "Manage Server permission is required.", ephemeral: true, ...quiet });
+      await interaction.reply({ content: `<@${interaction.user.id}> hey, don't do that. Manage Server permission is required.`, ...quiet });
       return;
     }
     const link = this.state.threads.data[interaction.channelId];
@@ -364,14 +364,14 @@ export class Conversations {
       ?? interaction.message.embeds[0]?.url;
     const parsed = url && /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/.exec(url);
     if (!link || link.archived || link.guildId !== interaction.guildId || !parsed || parsed[3] !== match[2] || !link.postedPrs.includes(url)) {
-      await interaction.reply({ content: "This PR card is not linked to an active conversation.", ephemeral: true, ...quiet });
+      await interaction.reply({ content: "This PR card is not linked to an active conversation.", ...quiet });
       return;
     }
     if (!this.github) {
-      await interaction.reply({ content: "PR actions are unavailable: configure GITHUB_TOKEN.", ephemeral: true, ...quiet });
+      await interaction.reply({ content: "PR actions are unavailable: configure GITHUB_TOKEN.", ...quiet });
       return;
     }
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
     const ref: PrRef = { owner: parsed[1]!, repo: parsed[2]!, number: Number(match[2]) };
     try {
       const pr = await this.github.getPull(ref);
